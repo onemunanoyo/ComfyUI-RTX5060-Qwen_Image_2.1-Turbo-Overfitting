@@ -1,0 +1,25 @@
+name: RTX 5060 fork regression
+
+on:
+  push:
+    branches: [master, codex/rtx5060-inference]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  mixed-offload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r requirements.txt -r tests-unit/requirements.txt
+      - name: Test mixed-model cache eviction
+        run: python -m pytest tests-unit/comfy_test/test_mixed_model_offload.py -q

@@ -6,9 +6,9 @@ license = { file = "LICENSE" }
 requires-python = ">=3.10"
 
 [project.urls]
-homepage = "https://www.comfy.org/"
-repository = "https://github.com/comfyanonymous/ComfyUI"
-documentation = "https://docs.comfy.org/"
+homepage = "https://github.com/onemunanoyo/ComfyUI-RTX5060-Qwen_Image_2.1-Turbo-Overfitting"
+repository = "https://github.com/onemunanoyo/ComfyUI-RTX5060-Qwen_Image_2.1-Turbo-Overfitting"
+documentation = "https://github.com/onemunanoyo/ComfyUI-RTX5060-Qwen_Image_2.1-Turbo-Overfitting#readme"
 
 [tool.ruff]
 lint.select = [
@@ -26,6 +26,9 @@ lint.select = [
 lint.ignore = ["E501", "E722", "E731", "E712", "E402", "E741"]
 
 exclude = ["*.ipynb", "**/generated/*.pyi"]
+
+[tool.ruff.lint.per-file-ignores]
+"experiments/rtx5060/tools/*.py" = ["T201"]
 
 [tool.pylint]
 master.py-version = "3.10"

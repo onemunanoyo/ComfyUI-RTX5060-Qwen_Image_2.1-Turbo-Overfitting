@@ -1,0 +1,107 @@
+diff --git a/dequant.py b/dequant.py
+index 78f5f26..30de504 100644
+--- a/dequant.py
++++ b/dequant.py
+@@ -1,8 +1,12 @@
+ # (c) City96 || Apache-2.0 (apache.org/licenses/LICENSE-2.0)
+ import gguf
++import os
+ import torch
+ from tqdm import tqdm
+ 
++FUSED_DEQUANT = os.environ.get("COMFY_GGUF_FUSED_DEQUANT") == "1"
++if FUSED_DEQUANT:
++    from .dequant_triton import dequantize_cuda
+ 
+ TORCH_COMPATIBLE_QTYPES = (None, gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16)
+ 
+@@ -18,6 +22,8 @@ def dequantize_tensor(tensor, dtype=None, dequant_dtype=None):
+ 
+     if qtype in TORCH_COMPATIBLE_QTYPES:
+         return tensor.to(dtype)
++    elif FUSED_DEQUANT and tensor.is_cuda and dequant_dtype is None and qtype in (gguf.GGMLQuantizationType.Q6_K, gguf.GGMLQuantizationType.Q8_0):
++        return dequantize_cuda(tensor, oshape, dtype, 6 if qtype == gguf.GGMLQuantizationType.Q6_K else 8)
+     elif qtype in dequantize_functions:
+         dequant_dtype = dtype if dequant_dtype == "target" else dequant_dtype
+         return dequantize(tensor.data, qtype, oshape, dtype=dequant_dtype).to(dtype)
+diff --git a/dequant_triton.py b/dequant_triton.py
+new file mode 100644
+index 0000000..6629544
+--- /dev/null
++++ b/dequant_triton.py
+@@ -0,0 +1,41 @@
++# SPDX-License-Identifier: Apache-2.0
++import torch
++import triton
++import triton.language as tl
++
++
++@triton.jit
++def _dequantize_kernel(source, destination, count: tl.constexpr, qtype: tl.constexpr, BLOCK: tl.constexpr):
++    index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
++    valid = index < count
++    if qtype == 8:
++        block = index // 32
++        offset = block * 34
++        low = tl.load(source + offset, valid, 0).to(tl.uint16)
++        high = tl.load(source + offset + 1, valid, 0).to(tl.uint16)
++        scale = (low | (high << 8)).to(tl.float16, bitcast=True).to(tl.float32)
++        quant = tl.load(source + offset + 2 + index % 32, valid, 0).to(tl.int8, bitcast=True).to(tl.float32)
++    else:
++        block = index // 256
++        element = index % 256
++        offset = block * 210
++        low = tl.load(source + offset + 208, valid, 0).to(tl.uint16)
++        high = tl.load(source + offset + 209, valid, 0).to(tl.uint16)
++        scale = (low | (high << 8)).to(tl.float16, bitcast=True).to(tl.float32)
++        subgroup_scale = tl.load(source + offset + 192 + element // 16, valid, 0).to(tl.int8, bitcast=True).to(tl.float32)
++        scale = (scale * subgroup_scale).to(tl.float16).to(tl.float32)
++        ql = tl.load(source + offset + (element // 128) * 64 + element % 64, valid, 0).to(tl.int32)
++        qh = tl.load(source + offset + 128 + (element // 128) * 32 + element % 32, valid, 0).to(tl.int32)
++        ql = (ql >> (4 * ((element % 128) // 64))) & 15
++        qh = (qh >> (2 * ((element % 128) // 32))) & 3
++        quant = ((ql | (qh << 4)) - 32).to(tl.float32)
++    result = (scale * quant).to(tl.float16)
++    tl.store(destination + index, result, valid)
++
++
++def dequantize_cuda(tensor, shape, dtype, qtype):
++    output = torch.empty(shape, device=tensor.device, dtype=dtype or torch.float16)
++    _dequantize_kernel[(triton.cdiv(output.numel(), 1024),)](
++        tensor, output, output.numel(), qtype, BLOCK=1024,
++    )
++    return output
+diff --git a/loader.py b/loader.py
+index 7cefb11..8e4ed69 100644
+--- a/loader.py
++++ b/loader.py
+@@ -9,7 +9,7 @@ import os
+ from .ops import GGMLTensor
+ from .dequant import is_quantized, dequantize_tensor
+ 
+-IMG_ARCH_LIST = {"flux", "sd1", "sdxl", "sd3", "aura", "hidream", "cosmos", "ltxv", "hyvid", "wan", "lumina2", "qwen_image"}
++IMG_ARCH_LIST = {"flux", "sd1", "sdxl", "sd3", "aura", "hidream", "cosmos", "ltxv", "hyvid", "wan", "lumina2", "qwen_image", "qwen_image21"}
+ TXT_ARCH_LIST = {"t5", "t5encoder", "llama", "qwen2vl", "qwen3", "qwen3vl", "gemma3"}
+ VIS_TYPE_LIST = {"clip-vision", "mmproj"}
+ 
+diff --git a/tools/convert.py b/tools/convert.py
+index 5029c87..ee348be 100644
+--- a/tools/convert.py
++++ b/tools/convert.py
+@@ -145,8 +145,14 @@ class ModelLumina2(ModelTemplate):
+         ("cap_embedder.1.weight", "context_refiner.0.attention.qkv.weight")
+     ]
+ 
+-arch_list = [ModelFlux, ModelSD3, ModelAura, ModelHiDream, CosmosPredict2, 
+-             ModelLTXV, ModelHyVid, ModelWan, ModelSDXL, ModelSD1, ModelLumina2]
++class QwenImage21(ModelTemplate):
++    arch = "qwen_image21"
++    keys_detect = [
++        ("txt_in.text_norm.weight", "modulation.1.weight", "transformer_blocks.0.attn.norm_q.weight", "img_in.weight", "proj_out.weight")
++    ]
++
++arch_list = [ModelFlux, ModelSD3, ModelAura, ModelHiDream, CosmosPredict2,
++             ModelLTXV, ModelHyVid, ModelWan, ModelSDXL, ModelSD1, ModelLumina2, QwenImage21]
+ 
+ def is_model_arch(model, state_dict):
+     # check if model is correct

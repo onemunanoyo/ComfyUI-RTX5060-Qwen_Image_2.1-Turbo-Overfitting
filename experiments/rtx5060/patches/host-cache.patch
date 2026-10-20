@@ -1,0 +1,25 @@
+diff --git a/comfy/model_management.py b/comfy/model_management.py
+index 6e6aaefa..1cc19e39 100644
+--- a/comfy/model_management.py
++++ b/comfy/model_management.py
+@@ -916,7 +916,9 @@ def free_memory(memory_required, device, keep_loaded=[], for_dynamic=False, pins
+                 #as that works on-demand.
+                 memory_required -= current_loaded_models[i].model.loaded_size()
+                 memory_to_free = 0
+-        if memory_to_free > 0 and current_loaded_models[i].model_unload(memory_to_free):
++        if memory_to_free > 0 and pins_required > 0 and current_loaded_models[i].model.is_dynamic():
++            current_loaded_models[i].model.partially_unload(current_loaded_models[i].model.offload_device, memory_to_free)
++        elif memory_to_free > 0 and current_loaded_models[i].model_unload(memory_to_free):
+             logging.debug(f"Unloading {current_loaded_models[i].model.model.__class__.__name__}")
+             unloaded_model.append(i)
+ 
+@@ -924,7 +926,8 @@ def free_memory(memory_required, device, keep_loaded=[], for_dynamic=False, pins
+         unloaded_models.append(current_loaded_models.pop(i))
+ 
+     if not for_dynamic and pins_required > 0:
+-        ensure_pin_budget(pins_required)
++        # Legacy pinning registers weights already in RAM; it does not allocate another copy.
++        ensure_pin_budget(0)
+         ensure_pin_registerable(pins_required)
+ 
+     if len(unloaded_model) > 0:

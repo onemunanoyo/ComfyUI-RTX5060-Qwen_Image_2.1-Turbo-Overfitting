@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-21",
+  "hardware": {
+    "gpu": "RTX 5060 8GB",
+    "cpu": "Ryzen 7 9700X",
+    "ram_gb": 32,
+    "driver": "617.42"
+  },
+  "runtime": {
+    "python": "3.13.16",
+    "torch": "2.14.1+cu130",
+    "comfy_kitchen": "0.2.39",
+    "comfy_aimdo": "0.5.6"
+  },
+  "workload": {
+    "model": "Qwen-Image-2.1-Turbo-AD-Q6_K.gguf",
+    "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+    "vae": "qwen_image_2.1_vae_bf16.safetensors",
+    "resolution": [
+      1024,
+      1024
+    ],
+    "batch_size": 1,
+    "steps": 8,
+    "cfg": 1.0,
+    "sampler": "euler",
+    "sigmas": [
+      1.0,
+      0.978453,
+      0.95418,
+      0.926626,
+      0.89508,
+      0.845148,
+      0.704534,
+      0.414568,
+      0.0
+    ],
+    "prompt": "A watercolor illustration of a small wooden cabin beside a mountain lake, pine trees, morning sunlight, detailed landscape.",
+    "seeds": [
+      12345,
+      12346,
+      12347,
+      12348
+    ]
+  },
+  "timing_scope": "Wall time includes sampling, VAE decoding and PNG saving. First run excluded. Prompt fixed and seed changed.",
+  "results": {
+    "bf16_control": {
+      "warm_seconds": [
+        17.8236247,
+        18.1548456
+      ],
+      "median_seconds": 17.98923515
+    },
+    "fp16_accumulation": {
+      "warm_seconds": [
+        12.6233069,
+        12.6973278,
+        12.7179228
+      ],
+      "median_seconds": 12.6973278
+    },
+    "fp16_accumulation_kitchen": {
+      "warm_seconds": [
+        11.7776261,
+        11.7552029,
+        11.811196
+      ],
+      "median_seconds": 11.7776261
+    },
+    "fast_launcher_recheck": {
+      "warm_seconds": [
+        11.7575499,
+        11.7618783
+      ],
+      "median_seconds": 11.7597141
+    }
+  },
+  "limitations": [
+    "Small sample, one landscape prompt; not a general benchmark.",
+    "Fast modes change arithmetic precision; not pixel-identical to BF16.",
+    "Faces, lettering, editing and other resolutions unvalidated.",
+    "First-load filesystem caches uncontrolled.",
+    "Raw local histories, logs, image files and user paths are excluded from publication."
+  ],
+  "comfyui_benchmark_commit": "fd734e958c68d96f310cafbc2ca609567dd1daf2",
+  "gguf_base_commit": "6ea2651e7df66d7585f6ffee804b20e92fb38b8a"
+}

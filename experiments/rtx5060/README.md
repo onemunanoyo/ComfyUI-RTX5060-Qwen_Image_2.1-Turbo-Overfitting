@@ -36,6 +36,12 @@ The actual model passed 1732 exact dequantization comparisons over Q6_K/Q8_0 ten
 
 Measurements use one landscape prompt, 1024x1024, batch 1, CFG 1, Euler and eight steps. Seed changes force sampling, decode and saving to execute while the fixed prompt reuses conditioning. The benchmark's generic default schedule remains `simple`; pass the explicit Turbo sigma list above for Qwen. Initial loading and filesystem caches are not controlled for cold-start comparisons.
 
+### Startup and encoder loading
+
+`tools/profile_encoder_loading.py --output results.json` measures encoder loading and two different prompts in a fresh process. `tools/profile_qwen_startup.py --output results.json` measures imports, deferred model loading, encoding, sampling and VAE decoding separately, followed by a fixed-prompt generation and a changed-prompt generation. Run these only when the GPU is idle. Profiles and tensor comparisons are saved beside the requested output; keep them in the ignored `results/` directory.
+
+The Qwen startup profiler uses the fast FP16/Kitchen configuration and accepts existing ComfyUI CLI flags. Its optional `--read-ahead` trial reads the three model files sequentially in a background thread; this is a measurement option, not a recommended optimization. OS file caches are not flushed or controlled, so these runs cannot establish cold-disk speedups. Process read counters also do not measure physical disk reads from memory-mapped files. `--disable-mmap` does not change the current aimdo safetensors loading path; disable dynamic VRAM as well when testing the legacy eager-copy path.
+
 ## Rejected experiments
 
 - Nonblocking transfers alone and pinning plus nonblocking transfers did not improve the standalone sampler time.
